@@ -6,6 +6,14 @@ This repository contains a bash script (`block-embargoed-iptables.sh`) and an ac
 
 The bash script downloads country-specific IP lists, creates a blocklist, and configures `iptables` rules to block any traffic originating from those IP ranges. The Ansible playbook automates the deployment of this script across multiple servers.
 
+## Currently Blocked Countries
+- Cuba
+- Iran
+- North Korea
+- Russia 
+- Sudan
+- Syria
+
 ## Components
 
 ### 1. Bash Script (`block-embargoed-iptables.sh`)
