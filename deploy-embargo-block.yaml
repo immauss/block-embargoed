@@ -1,0 +1,25 @@
+- name: Deploy and Run Block Embargoed Countries Script
+  hosts: all
+  become: true
+  tasks:
+    - name: Copy the script to the remote host
+      copy:
+        src: block-embargoed-iptables.sh
+        dest: /usr/local/sbin/block-embargoed-iptables.sh
+        mode: '0755'
+
+    - name: Make the script executable
+      file:
+        path: /usr/local/sbin/block-embargoed-iptables.sh
+        mode: '0755'
+        state: file
+
+    - name: Run the script
+      command: /usr/local/sbin/block-embargoed-iptables.sh
+
+    - name: Establish daily cron job for the script
+      cron:
+        name: "Daily update for embargoed IP blocklist"
+        job: "/bin/bash /usr/local/sbin/block-embargoed-iptables.sh"
+        special_time: daily
+
