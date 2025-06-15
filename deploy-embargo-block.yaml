@@ -2,6 +2,28 @@
   hosts: all
   become: true
   tasks:
+    - name: Get current root crontab
+      command: crontab -l -u root
+      register: current_crontab
+      failed_when: false  # Handles cases where root's crontab might be empty
+
+    - name: Remove lines containing 'embargoed'
+      copy:
+        dest: /tmp/cleaned_crontab
+        content: |
+          {% for line in current_crontab.stdout_lines %}
+          {% if 'embargoed' not in line %}
+          {{ line }}
+          {% endif %}
+          {% endfor %}
+
+    - name: Install cleaned crontab for root
+      command: crontab -u root /tmp/cleaned_crontab
+
+    - name: Remove temporary crontab file
+      file:
+        path: /tmp/cleaned_crontab
+        state: absent
     - name: Copy the script to the remote host
       copy:
         src: block-embargoed-iptables.sh
@@ -16,10 +38,3 @@
 
     - name: Run the script
       command: /usr/local/sbin/block-embargoed-iptables.sh
-
-    - name: Establish daily cron job for the script
-      cron:
-        name: "Daily update for embargoed IP blocklist"
-        job: "/bin/bash /usr/local/sbin/block-embargoed-iptables.sh"
-        special_time: daily
-

@@ -7,7 +7,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Define paths for the IP range files and set variables
-IPTABLES_CHAIN_NAME="INPUT"
+IPTABLES_CHAINS="INPUT FORWARD"
 BLOCKLIST_DIR="/etc/ipblock"
 IPLIST_URLS=(
     "https://www.ipdeny.com/ipblocks/data/countries/cu.zone"
@@ -36,22 +36,35 @@ update_iptables_blocklist() {
     done
 
     # Flush old iptables rules related to the blocklist
-    iptables -D "$IPTABLES_CHAIN_NAME" -m set --match-set blocklist src -j LOG --log-prefix "[BLOCKED-IP] " --log-level 4 2>/dev/null
-    iptables -D "$IPTABLES_CHAIN_NAME" -m set --match-set blocklist src -j DROP 2>/dev/null
-    ipset destroy blocklist 2>/dev/null
-
+    for  IPTABLES_CHAIN_NAME in $IPTABLES_CHAINS; do
+        echo "Deleting from $IPTABLES_CHAIN_NAME chain"
+        iptables -D "$IPTABLES_CHAIN_NAME" -m set --match-set blocklist src -j LOG --log-prefix "[BLOCKED-IP] " --log-level 4 #2>/dev/null
+        iptables -D "$IPTABLES_CHAIN_NAME" -m set --match-set blocklist src -j DROP #2>/dev/null
+    done
+    # Give the kernel 2 seconds to catch up.
+    sleep 2
+    echo " Destroy existing blocklist "
+    ipset destroy blocklist # 2> logger
+    if [ $? -ne 0 ]; then
+        echo "blocklist destroy failed with $?"
+        ipset destroy blocklist
+    fi
     # Create a new ipset for the blocklist
+    echo "Create ipset"
     ipset create blocklist hash:net
+    echo -n "Adding $(wc -l $temp_file | awk '{print $1}') entries to blocklist"
     while read -r ip; do
         ipset add blocklist "$ip"
     done < "$temp_file"
 
     # Apply iptables rule to log and drop traffic from IPs in the blocklist
-    iptables -I "$IPTABLES_CHAIN_NAME" -m set --match-set blocklist src -j LOG --log-prefix "[BLOCKED-IP] " --log-level 4
-    iptables -I "$IPTABLES_CHAIN_NAME" -m set --match-set blocklist src -j DROP
-
+    for  IPTABLES_CHAIN_NAME in $IPTABLES_CHAINS; do
+        echo "Applying to $IPTABLES_CHAIN_NAME"
+        iptables -I "$IPTABLES_CHAIN_NAME" -m set --match-set blocklist src -j LOG --log-prefix "[BLOCKED-IP] " --log-level 4
+        iptables -I "$IPTABLES_CHAIN_NAME" -m set --match-set blocklist src -j DROP
+    done
     rm "$temp_file"
-    echo "iptables blocklist updated."
+    echo "iptables blocklist updated in $IPTABLES_CHAINS."
 }
 
 # Step 3: Run the function to update the blocklist
@@ -60,7 +73,7 @@ update_iptables_blocklist
 echo "Blocking completed."
 
 # Step 4: Set up a cron job for daily updates (if not already present)
-CRONJOB="@daily /bin/bash /usr/local/sbin/block_embargoed_countries.sh"
+CRONJOB="@daily /bin/bash /usr/local/sbin/block_embargoed_iptables.sh"
 (crontab -l | grep -Fx "$CRONJOB") || (crontab -l; echo "$CRONJOB") | crontab -
 
 echo "Daily cron job set up for automatic updates."
